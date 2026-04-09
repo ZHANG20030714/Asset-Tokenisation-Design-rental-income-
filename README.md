@@ -105,6 +105,6 @@ You may optionally add a simple ERC‑20 `RewardToken` contract for local testin
 > Replace the placeholders below with your actual deployed contract addresses on the chosen testnet.
 
 - **Network**: Sepolia Testnet  
-- **RentToken (RNT)**: `0x...`  
-- **RewardToken (e.g. TestUSD)**: `0x...`  
-- **RentDistributor**: `0x...
+- **RentToken (RNT)**: `0x7EF2e0048f5bAeDe046f6BF797943daF4ED8CB47`  
+- **RewardToken (e.g. TestUSD)**: `0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B`  
+- **RentDistributor**: `0xDA0bab807633f07f013f94DD0E6A4F96F8742B53`
