@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+// 引用 OpenZeppelin 官方库
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC20/ERC20.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/access/Ownable.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v5.0.0/contracts/token/ERC20/IERC20.sol";
+
+/* =========================================================================
+   1. 测试用稳定币 (TestUSD)
+   用于模拟现实中的 USDC 或 USDT 租金收入
+   ========================================================================= */
+contract TestUSD is ERC20 {
+    constructor() ERC20("Test USD", "TUSD") {
+        // 部署时直接铸造 10万 个 TUSD，带有 18 位小数
+        _mint(msg.sender, 100000 * 10 ** decimals());
+    }
+}
+
+/* =========================================================================
+   2. 租金收益权代币 (RentToken - RNT)
+   代表房产租金收益的份额
+   ========================================================================= */
+contract RentToken is ERC20, Ownable {
+    constructor() ERC20("Rental Income Token", "RNT") Ownable(msg.sender) {
+        // 假设总共有 1,000,000 份租金份额，部署时全部发给发行方
+        _mint(msg.sender, 1000000 * 10 ** decimals());
+    }
+}
+
+/* =========================================================================
+   3. 租金分配合约 (RentDistributor)
+   资产管理人把 TUSD 打进来，合约按 RNT 的持仓比例分发给持有者
+   ========================================================================= */
+contract RentDistributor is Ownable {
+    IERC20 public rentToken;     // 关联的份额代币 (RNT)
+    IERC20 public rewardToken;   // 关联的租金代币 (TUSD)
+
+    uint256 public rewardPerTokenStored;
+
+    mapping(address => uint256) public userRewardPerTokenPaid;
+    mapping(address => uint256) public rewards;
+
+    event RewardAdded(uint256 reward);
+    event RewardPaid(address indexed user, uint256 reward);
+
+    constructor(address _rentToken, address _rewardToken) Ownable(msg.sender) {
+        rentToken = IERC20(_rentToken);
+        rewardToken = IERC20(_rewardToken);
+    }
+
+    // 每次用户交互时，更新他的应得收益
+    modifier updateReward(address account) {
+        if (account != address(0)) {
+            rewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = rewardPerTokenStored;
+        }
+        _;
+    }
+
+    // 计算某个地址当前应得的租金
+    function earned(address account) public view returns (uint256) {
+        uint256 balance = rentToken.balanceOf(account);
+        uint256 paid = userRewardPerTokenPaid[account];
+        
+        // 累积收益 = 之前的未领收益 + (当前持仓 * 新增的每币收益)
+        return rewards[account] + (balance * (rewardPerTokenStored - paid)) / 1e18;
+    }
+
+    // 资产管理人调用此函数，录入新一期的租金金额 (前提：需先将对应金额的 TUSD 转入本合约)
+    function notifyRewardAmount(uint256 rewardAmount) external onlyOwner updateReward(address(0)) {
+        uint256 totalSupply = rentToken.totalSupply();
+        require(totalSupply > 0, "No rent tokens in existence");
+
+        // 更新全局的 "每代币应得收益"
+        rewardPerTokenStored += rewardAmount * 1e18 / totalSupply;
+        
+        emit RewardAdded(rewardAmount);
+    }
+
+    // 投资者调用此函数，提取自己应得的租金 (TUSD)
+    function getReward() external updateReward(msg.sender) {
+        uint256 reward = rewards[msg.sender];
+        if (reward > 0) {
+            rewards[msg.sender] = 0;
+            require(rewardToken.transfer(msg.sender, reward), "Transfer failed");
+            emit RewardPaid(msg.sender, reward);
+        }
+    }
+}
